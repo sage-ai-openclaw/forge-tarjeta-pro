@@ -48,6 +48,21 @@ export interface PromotionFilters {
   search?: string;
 }
 
+export interface User {
+  id: number;
+  email: string;
+  name?: string;
+  createdAt: string;
+}
+
+export interface UserCard {
+  id: number;
+  userId: number;
+  cardId: number;
+  card?: Card;
+  createdAt: string;
+}
+
 export interface UserPreferences {
   id: number;
   userId: number;

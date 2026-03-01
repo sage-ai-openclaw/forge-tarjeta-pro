@@ -4,8 +4,14 @@ import { PromotionCard } from '../components/PromotionCard';
 import { FilterSidebar } from '../components/FilterSidebar';
 import { SearchBar } from '../components/SearchBar';
 import { CreditCard, Building2, Tag, Sparkles } from 'lucide-react';
+import { clsx } from 'clsx';
 
-export function Dashboard() {
+interface DashboardProps {
+  onNavigateToMyPromotions?: () => void;
+  onNavigateToPreferences?: () => void;
+}
+
+export function Dashboard({ onNavigateToMyPromotions, onNavigateToPreferences }: DashboardProps) {
   const { 
     promotions, 
     isLoading, 
@@ -48,9 +54,19 @@ export function Dashboard() {
             </div>
 
             <nav className="hidden md:flex items-center space-x-6">
-              <a href="#" className="text-gray-700 hover:text-blue-600 font-medium">Dashboard</a>
-              <a href="#" className="text-gray-500 hover:text-blue-600">Mis Tarjetas</a>
-              <a href="#" className="text-gray-500 hover:text-blue-600">Preferencias</a>
+              <span className="text-blue-600 font-medium">Dashboard</span>
+              <button 
+                onClick={onNavigateToMyPromotions}
+                className="text-gray-500 hover:text-blue-600"
+              >
+                Mis Tarjetas
+              </button>
+              <button 
+                onClick={onNavigateToPreferences}
+                className="text-gray-500 hover:text-blue-600"
+              >
+                Preferencias
+              </button>
             </nav>
           </div>
         </div>

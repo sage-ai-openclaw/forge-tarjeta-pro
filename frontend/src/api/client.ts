@@ -1,4 +1,4 @@
-import type { Bank, Card, Promotion, PromotionFilters, UserPreferences } from '../types';
+import type { Bank, Card, Promotion, PromotionFilters, UserPreferences, UserCard, User } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -54,14 +54,49 @@ export const api = {
   getCategories: () => fetchApi<string[]>('/api/categories'),
 
   // User Preferences
-  getUserPreferences: (userId: string) => 
+  getUserPreferences: (userId: string | number) => 
     fetchApi<UserPreferences>(`/api/preferences/${userId}`),
 
-  saveUserPreferences: (preferences: Partial<UserPreferences>) =>
+  saveUserPreferences: (preferences: Partial<UserPreferences> & { userId: number }) =>
     fetchApi<UserPreferences>('/api/preferences', {
       method: 'POST',
       body: JSON.stringify(preferences),
     }),
+
+  updateUserPreferences: (userId: number, data: Partial<UserPreferences>) =>
+    fetchApi<UserPreferences>(`/api/preferences/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  // User Cards
+  getUserCards: (userId: number) => 
+    fetchApi<UserCard[]>(`/api/users/${userId}/cards`),
+
+  addUserCard: (userId: number, cardId: number) =>
+    fetchApi<UserCard>(`/api/users/${userId}/cards`, {
+      method: 'POST',
+      body: JSON.stringify({ cardId }),
+    }),
+
+  removeUserCard: (userId: number, cardId: number) =>
+    fetchApi<void>(`/api/users/${userId}/cards/${cardId}`, {
+      method: 'DELETE',
+    }),
+
+  // My Promotions (filtered by user preferences)
+  getMyPromotions: (userId: number) =>
+    fetchApi<Promotion[]>(`/api/users/${userId}/promotions`),
+
+  // User Management
+  createUser: (email: string, name?: string) =>
+    fetchApi<User>('/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ email, name }),
+    }),
+
+  getUser: (userId: number) =>
+    fetchApi<User>(`/api/users/${userId}`),
 
   // Stats
   getStats: () => fetchApi('/api/stats'),

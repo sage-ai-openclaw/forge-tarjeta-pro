@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tarjeta Pro - Promociones Bancarias</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="container">
@@ -14,51 +14,103 @@
     </header>
 
     <nav class="tabs">
-      <button class="tab-btn active" onclick="showTab('promotions')">Promociones</button>
-      <button class="tab-btn" onclick="showTab('scraper')">Scraper</button>
-      <button class="tab-btn" onclick="showTab('banks')">Bancos</button>
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="preferences">Mis Preferencias</button>
+      <button class="tab-btn" data-tab="my-cards">Mis Tarjetas</button>
+      <button class="tab-btn" data-tab="filtered">Recomendados</button>
     </nav>
 
-    <section id="promotions" class="tab-content active">
+    <!-- Dashboard Tab -->
+    <section id="dashboard" class="tab-content active">
       <div class="filters">
-        <input type="text" id="searchInput" placeholder="Buscar promociones...">
-        <select id="bankFilter">
+        <input type="text" id="search-input" placeholder="Buscar promociones...">
+        <select id="bank-filter">
           <option value="">Todos los bancos</option>
         </select>
-        <select id="categoryFilter">
-          <option value="">Todas las categorias</option>
-          <option value="Gastronomia">Gastronomia</option>
-          <option value="Supermercados">Supermercados</option>
-          <option value="Moda">Moda</option>
-          <option value="Viajes">Viajes</option>
-          <option value="Entretenimiento">Entretenimiento</option>
+        <select id="category-filter">
+          <option value="">Todas las categorías</option>
+        </select>
+        <select id="card-type-filter">
+          <option value="">Todos los tipos</option>
+          <option value="credit">Crédito</option>
+          <option value="debit">D��bito</option>
+        </select>
+        <select id="sort-by">
+          <option value="expiration">Vencimiento</option>
+          <option value="discount">Descuento</option>
+          <option value="created">Recientes</option>
         </select>
       </div>
-      <div id="promotionsList" class="promotions-grid"></div>
+      <div id="promotions-grid" class="promotions-grid"></div>
     </section>
 
-    <section id="scraper" class="tab-content">
-      <div class="scraper-controls">
-        <h2>Control de Scrapers</h2>
-        <div class="scraper-buttons">
-          <button onclick="runScraper('all')" class="btn-primary">Ejecutar todos</button>
-          <button onclick="runScraper('Itau')">Itau</button>
-          <button onclick="runScraper('Continental')">Continental</button>
-          <button onclick="runScraper('Sudameris')">Sudameris</button>
-          <button onclick="runScraper('Atlas')">Atlas</button>
-          <button onclick="runScraper('Vision')">Vision</button>
+    <!-- Preferences Tab -->
+    <section id="preferences" class="tab-content">
+      <h2>Mis Preferencias</h2>
+      <form id="preferences-form">
+        <div class="form-group">
+          <label>Categorías preferidas</label>
+          <div id="categories-checkboxes" class="checkbox-group"></div>
         </div>
-        <div id="scraperResults"></div>
-        <h3>Logs recientes</h3>
-        <div id="scraperLogs"></div>
+        <div class="form-group">
+          <label>Zonas preferidas</label>
+          <input type="text" id="preferred-zones" placeholder="Ej: Asunción, San Lorenzo, Luque">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Descuento mínimo (%)</label>
+            <input type="number" id="min-discount" min="0" max="100" value="0">
+          </div>
+          <div class="form-group">
+            <label>Descuento máximo (Gs)</label>
+            <input type="number" id="max-discount-amount" min="0" placeholder="Sin límite">
+          </div>
+        </div>
+        <div class="form-group checkbox">
+          <label>
+            <input type="checkbox" id="notify-new" checked>
+            Notificar nuevas promociones
+          </label>
+        </div>
+        <div class="form-group checkbox">
+          <label>
+            <input type="checkbox" id="notify-expiring" checked>
+            Notificar promociones por vencer
+          </label>
+        </div>
+        <button type="submit">Guardar Preferencias</button>
+      </form>
+    </section>
+
+    <!-- My Cards Tab -->
+    <section id="my-cards" class="tab-content">
+      <h2>Mis Tarjetas</h2>
+      <div class="cards-section">
+        <h3>Tarjetas que tengo</h3>
+        <div id="my-cards-list" class="cards-list"></div>
+      </div>
+      <div class="cards-section">
+        <h3>Agregar tarjeta</h3>
+        <div class="add-card-form">
+          <select id="new-card-bank">
+            <option value="">Seleccionar banco</option>
+          </select>
+          <select id="new-card" disabled>
+            <option value="">Seleccionar tarjeta</option>
+          </select>
+          <button id="add-card-btn" disabled>Agregar</button>
+        </div>
       </div>
     </section>
 
-    <section id="banks" class="tab-content">
-      <div id="banksList"></div>
+    <!-- Filtered Tab -->
+    <section id="filtered" class="tab-content">
+      <h2>Promociones Recomendadas</h2>
+      <p class="subtitle">Basado en tus preferencias y tarjetas</p>
+      <div id="filtered-promotions" class="promotions-grid"></div>
     </section>
   </div>
 
-  <script src="app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>

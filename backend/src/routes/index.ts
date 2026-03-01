@@ -4,11 +4,15 @@ import { PromotionModel } from '../models/Promotion';
 import { BankModel, CardModel } from '../models';
 import { getDatabase } from '../db/database';
 import scraperRoutes from './scraper';
+import preferencesRoutes from './preferences';
 
 const router = Router();
 
 // Mount scraper routes
 router.use(scraperRoutes);
+
+// Mount preferences routes
+router.use(preferencesRoutes);
 
 // GET /api/banks - List all banks
 router.get('/banks', async (_req, res) => {

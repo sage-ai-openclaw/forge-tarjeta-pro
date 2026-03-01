@@ -49,13 +49,17 @@ export class PromotionModel {
     category?: string;
     status?: string;
     cardId?: number;
+    bankId?: number;
+    cardType?: string;
+    sortBy?: 'discount' | 'expiration' | 'created';
+    sortOrder?: 'asc' | 'desc';
+    search?: string;
     validFrom?: string;
-    validUntil?: string;
   }): Promise<Promotion[]> {
     const db = await getDatabase();
     
     let query = `
-      SELECT p.*, c.name as card_name, b.name as bank_name
+      SELECT p.*, c.name as card_name, b.name as bank_name, c.type as card_type
       FROM promotions p
       JOIN cards c ON p.card_id = c.id
       JOIN banks b ON c.bank_id = b.id
@@ -75,12 +79,45 @@ export class PromotionModel {
       query += ' AND p.card_id = ?';
       params.push(filters.cardId);
     }
+    if (filters?.bankId) {
+      query += ' AND b.id = ?';
+      params.push(filters.bankId);
+    }
+    if (filters?.cardType) {
+      query += ' AND c.type = ?';
+      params.push(filters.cardType);
+    }
     if (filters?.validFrom) {
       query += ' AND p.valid_until >= ?';
       params.push(filters.validFrom);
     }
+    if (filters?.search) {
+      query += ` AND (
+        p.title LIKE ? OR
+        p.description LIKE ? OR
+        p.merchant_name LIKE ? OR
+        p.category LIKE ? OR
+        b.name LIKE ?
+      )`;
+      const searchTerm = `%${filters.search}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
 
-    query += ' ORDER BY p.valid_until ASC';
+    // Sorting
+    const order = filters?.sortOrder === 'desc' ? 'DESC' : 'ASC';
+    switch (filters?.sortBy) {
+      case 'discount':
+        query += ` ORDER BY p.discount_percentage ${order} NULLS LAST`;
+        break;
+      case 'expiration':
+        query += ` ORDER BY p.valid_until ${order}`;
+        break;
+      case 'created':
+        query += ` ORDER BY p.created_at ${order}`;
+        break;
+      default:
+        query += ' ORDER BY p.valid_until ASC';
+    }
 
     const rows = await db.all(query, params);
     return rows.map(row => this.mapRow(row));
@@ -119,6 +156,16 @@ export class PromotionModel {
     const db = await getDatabase();
     const result = await db.run('DELETE FROM promotions WHERE id = ?', id);
     return result.changes! > 0;
+  }
+
+  static async getCategories(): Promise<string[]> {
+    const db = await getDatabase();
+    const rows = await db.all(`
+      SELECT DISTINCT category FROM promotions 
+      WHERE status = 'active' AND category IS NOT NULL
+      ORDER BY category
+    `);
+    return rows.map(row => row.category);
   }
 
   private static mapRow(row: any): Promotion {

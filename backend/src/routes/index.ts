@@ -56,18 +56,33 @@ router.post('/cards', async (req, res) => {
   }
 });
 
-// GET /api/promotions - List promotions
+// GET /api/promotions - List promotions with filtering
 router.get('/promotions', async (req, res) => {
   try {
-    const { category, status, cardId } = req.query;
+    const { category, status, cardId, bankId, cardType, sortBy, sortOrder, search } = req.query;
     const promotions = await PromotionModel.findAll({
       category: category as string,
-      status: status as string,
+      status: (status as string) || 'active',
       cardId: cardId ? Number(cardId) : undefined,
+      bankId: bankId ? Number(bankId) : undefined,
+      cardType: cardType as string,
+      sortBy: (sortBy as 'discount' | 'expiration' | 'created') || 'expiration',
+      sortOrder: (sortOrder as 'asc' | 'desc') || 'asc',
+      search: search as string,
     });
     res.json(promotions);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch promotions' });
+  }
+});
+
+// GET /api/categories - List all unique categories
+router.get('/categories', async (_req, res) => {
+  try {
+    const categories = await PromotionModel.getCategories();
+    res.json(categories);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch categories' });
   }
 });
 

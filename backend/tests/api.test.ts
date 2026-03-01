@@ -15,16 +15,22 @@ describe('Tarjeta Pro API (US1)', () => {
   });
 
   describe('GET /api/cards', () => {
-    it('should return empty array initially', async () => {
+    it('should return default cards initially', async () => {
       const response = await request(app).get('/api/cards');
       expect(response.status).toBe(200);
-      expect(response.body).toEqual([]);
+      expect(response.body).toBeInstanceOf(Array);
+      expect(response.body.length).toBeGreaterThan(0); // Default cards for scrapers
+      expect(response.body[0]).toHaveProperty('bankName');
     });
 
     it('should create and return cards', async () => {
       // Get first bank
       const banksRes = await request(app).get('/api/banks');
       const bankId = banksRes.body[0].id;
+
+      // Get initial card count
+      const initialRes = await request(app).get('/api/cards');
+      const initialCount = initialRes.body.length;
 
       // Create a card
       const createRes = await request(app)
@@ -34,10 +40,10 @@ describe('Tarjeta Pro API (US1)', () => {
       expect(createRes.status).toBe(201);
       expect(createRes.body.name).toBe('Visa Gold');
 
-      // List cards
+      // List cards - should have initial + 1 new
       const listRes = await request(app).get('/api/cards');
       expect(listRes.status).toBe(200);
-      expect(listRes.body).toHaveLength(1);
+      expect(listRes.body).toHaveLength(initialCount + 1);
       expect(listRes.body[0].bankName).toBeDefined();
     });
   });

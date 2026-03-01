@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { initializeDatabase } from './db/database';
 import apiRoutes from './routes';
 
@@ -15,9 +16,25 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.use((req: express.Request, res: express.Response) => {
-  res.status(404).json({ error: 'Not found' });
-});
+// Serve static frontend files in production
+if (process.env.NODE_ENV === 'production') {
+  const frontendDist = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendDist));
+  
+  // Serve index.html for all non-API routes
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(frontendDist, 'index.html'));
+    } else {
+      res.status(404).json({ error: 'Not found' });
+    }
+  });
+} else {
+  // In development, just return 404 for unknown routes
+  app.use((req: express.Request, res: express.Response) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+}
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Error:', err);

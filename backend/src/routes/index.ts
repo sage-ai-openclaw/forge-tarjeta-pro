@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { PromotionModel } from '../models/Promotion';
 import { BankModel, CardModel } from '../models';
+import { getDatabase } from '../db/database';
 import scraperRoutes from './scraper';
 
 const router = Router();
@@ -152,6 +153,64 @@ router.delete('/promotions/:id', async (req, res) => {
     res.status(204).send();
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete promotion' });
+  }
+});
+
+// GET /api/stats - Dashboard statistics
+router.get('/stats', async (_req, res) => {
+  try {
+    const db = await getDatabase();
+    
+    // Total promotions count
+    const totalResult = await db.get('SELECT COUNT(*) as count FROM promotions');
+    const total = totalResult?.count || 0;
+    
+    // Active promotions count
+    const activeResult = await db.get("SELECT COUNT(*) as count FROM promotions WHERE status = 'active'");
+    const active = activeResult?.count || 0;
+    
+    // Expired promotions count
+    const expiredResult = await db.get("SELECT COUNT(*) as count FROM promotions WHERE status = 'expired'");
+    const expired = expiredResult?.count || 0;
+    
+    // Promotions by bank
+    const byBank = await db.all(`
+      SELECT b.name as bank, COUNT(*) as count 
+      FROM promotions p
+      JOIN cards c ON p.card_id = c.id
+      JOIN banks b ON c.bank_id = b.id
+      WHERE p.status = 'active'
+      GROUP BY b.id, b.name
+      ORDER BY count DESC
+    `);
+    
+    // Promotions by category
+    const byCategory = await db.all(`
+      SELECT category, COUNT(*) as count 
+      FROM promotions 
+      WHERE status = 'active' AND category IS NOT NULL
+      GROUP BY category
+      ORDER BY count DESC
+    `);
+    
+    // Highest discount
+    const maxDiscountResult = await db.get(`
+      SELECT MAX(discount_percentage) as maxDiscount
+      FROM promotions
+      WHERE status = 'active'
+    `);
+    
+    res.json({
+      total,
+      active,
+      expired,
+      byBank: byBank.map((row: any) => ({ bank: row.bank, count: row.count })),
+      byCategory: byCategory.map((row: any) => ({ category: row.category, count: row.count })),
+      maxDiscount: maxDiscountResult?.maxDiscount || 0,
+    });
+  } catch (error) {
+    console.error('Stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });
 

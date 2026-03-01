@@ -108,4 +108,19 @@ describe('Tarjeta Pro API (US1)', () => {
       expect(response.status).toBe(400);
     });
   });
+
+  describe('GET /api/stats', () => {
+    it('should return dashboard statistics', async () => {
+      const response = await request(app).get('/api/stats');
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('total');
+      expect(response.body).toHaveProperty('active');
+      expect(response.body).toHaveProperty('expired');
+      expect(response.body).toHaveProperty('byBank');
+      expect(response.body).toHaveProperty('byCategory');
+      expect(response.body).toHaveProperty('maxDiscount');
+      expect(response.body.byBank).toBeInstanceOf(Array);
+      expect(response.body.byCategory).toBeInstanceOf(Array);
+    });
+  });
 });

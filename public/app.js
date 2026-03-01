@@ -1,96 +1,165 @@
-const API_URL = '';
-
-// Generate or get user ID
-function getUserId() {
-  let userId = localStorage.getItem('tarjeta_pro_user_id');
-  if (!userId) {
-    userId = 'user_' + Math.random().toString(36).substr(2, 9);
-    localStorage.setItem('tarjeta_pro_user_id', userId);
-  }
-  return userId;
+// Tab switching
+function showTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  event.target.classList.add('active');
+  
+  if (tabId === 'promotions') loadPromotions();
+  if (tabId === 'banks') loadBanks();
+  if (tabId === 'scraper') loadScraperLogs();
 }
 
 // Load promotions
 async function loadPromotions() {
-  try {
-    const response = await fetch(`${API_URL}/api/promotions/active`);
-    const promotions = await response.json();
-    renderPromotions(promotions);
-  } catch (err) {
-    document.getElementById('promotions-list').innerHTML = 
-      '<p class="empty-state">Error al cargar promociones</p>';
-  }
+  const response = await fetch('/api/promotions?status=active');
+  const promotions = await response.json();
+  renderPromotions(promotions);
 }
 
 function renderPromotions(promotions) {
-  const container = document.getElementById('promotions-list');
+  const container = document.getElementById('promotionsList');
+  
   if (promotions.length === 0) {
-    container.innerHTML = '<p class="empty-state">No hay promociones activas</p>';
+    container.innerHTML = `
+      <div class="empty-state">
+        <h3>No hay promociones activas</h3>
+        <p>Ejecuta el scraper para obtener las ultimas promociones</p>
+      </div>
+    `;
     return;
   }
   
   container.innerHTML = promotions.map(p => `
     <div class="promo-card">
-      <div class="promo-bank">${p.bank}</div>
-      <div class="promo-info">
-        <div class="promo-merchant">${p.merchant}</div>
-        <div class="promo-desc">${p.description}</div>
-        <div class="promo-valid">Válido hasta: ${p.valid_to || 'Sin fecha'}</div>
+      <div class="promo-header">
+        <span class="promo-bank">${p.bank_name} • ${p.card_name}</span>
+        ${p.discount_percentage ? `<span class="promo-discount">${p.discount_percentage}% OFF</span>` : ''}
       </div>
-      <div class="promo-discount">${p.discount_percent ? p.discount_percent + '%' : 'Oferta'}</div>
+      <h3 class="promo-title">${p.title}</h3>
+      <p class="promo-description">${p.description || ''}</p>
+      <div class="promo-meta">
+        <span>📁 ${p.category || 'General'}</span>
+        ${p.days_of_week ? `<span>📅 ${p.days_of_week}</span>` : ''}
+      </div>
+      <div class="promo-merchant">
+        <strong>${p.merchant_name || 'Comercio no especificado'}</strong>
+        ${p.merchant_address ? `<p>${p.merchant_address}</p>` : ''}
+        <p class="promo-dates">Vigente hasta: ${formatDate(p.valid_until)}</p>
+      </div>
     </div>
   `).join('');
 }
 
-// Load user preferences
-async function loadPreferences() {
-  const userId = getUserId();
+function formatDate(dateStr) {
+  if (!dateStr) return 'Sin fecha';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('es-PY', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// Search and filter
+document.getElementById('searchInput')?.addEventListener('input', debounce(async (e) => {
+  const query = e.target.value;
+  if (query.length < 2) {
+    loadPromotions();
+    return;
+  }
+  const response = await fetch(`/api/promotions/search?q=${encodeURIComponent(query)}`);
+  const promotions = await response.json();
+  renderPromotions(promotions);
+}, 300));
+
+document.getElementById('bankFilter')?.addEventListener('change', filterPromotions);
+document.getElementById('categoryFilter')?.addEventListener('change', filterPromotions);
+
+async function filterPromotions() {
+  const bankId = document.getElementById('bankFilter').value;
+  const category = document.getElementById('categoryFilter').value;
+  
+  let url = '/api/promotions?status=active';
+  if (bankId) url += `&bank_id=${bankId}`;
+  if (category) url += `&category=${encodeURIComponent(category)}`;
+  
+  const response = await fetch(url);
+  const promotions = await response.json();
+  renderPromotions(promotions);
+}
+
+// Scraper
+async function runScraper(bank) {
+  const resultsDiv = document.getElementById('scraperResults');
+  resultsDiv.className = 'loading';
+  resultsDiv.innerHTML = `<p>⏳ Ejecutando scraper para ${bank === 'all' ? 'todos los bancos' : bank}...</p>`;
+  
   try {
-    const response = await fetch(`${API_URL}/api/preferences/${userId}`);
-    if (response.ok) {
-      const prefs = await response.json();
-      document.getElementById('categories').value = prefs.categories.join(', ');
-      document.getElementById('banks').value = prefs.banks.join(', ');
-      document.getElementById('min-discount').value = prefs.min_discount;
-    }
+    const response = await fetch('/api/scraper/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bank })
+    });
+    
+    const data = await response.json();
+    resultsDiv.className = 'success';
+    
+    const results = data.results.map(r => `
+      <p><strong>${r.bank}:</strong> ${r.status === 'success' ? '✅' : '❌'} 
+      ${r.promotionsFound} encontradas, ${r.promotionsAdded} nuevas
+      ${r.error ? `<br><small>Error: ${r.error}</small>` : ''}</p>
+    `).join('');
+    
+    resultsDiv.innerHTML = `<h4>Resultados:</h4>${results}`;
+    loadScraperLogs();
   } catch (err) {
-    // No preferences saved yet
+    resultsDiv.className = 'error';
+    resultsDiv.innerHTML = `<p>❌ Error: ${err.message}</p>`;
   }
 }
 
-// Save preferences
-document.getElementById('prefs-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
+async function loadScraperLogs() {
+  const response = await fetch('/api/scraper/logs');
+  const logs = await response.json();
   
-  const categories = document.getElementById('categories').value
-    .split(',').map(s => s.trim()).filter(Boolean);
-  const banks = document.getElementById('banks').value
-    .split(',').map(s => s.trim()).filter(Boolean);
-  const minDiscount = parseFloat(document.getElementById('min-discount').value) || 0;
-  
-  const userId = getUserId();
-  
-  try {
-    await fetch(`${API_URL}/api/preferences`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: userId,
-        categories,
-        banks,
-        min_discount: minDiscount,
-        notify_email: false,
-        notify_push: false
-      })
-    });
-    alert('Preferencias guardadas');
-  } catch (err) {
-    alert('Error al guardar preferencias');
-  }
-});
+  const container = document.getElementById('scraperLogs');
+  container.innerHTML = logs.map(l => `
+    <div class="log-entry ${l.status}">
+      <span>${new Date(l.scraped_at).toLocaleString('es-PY')}</span>
+      <span><strong>${l.bank_name}</strong> - ${l.status === 'success' ? '✅' : '❌'}</span>
+      <span>${l.promotions_found} encontradas, ${l.promotions_added || 0} nuevas</span>
+    </div>
+  `).join('');
+}
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-  loadPromotions();
-  loadPreferences();
-});
+// Banks
+async function loadBanks() {
+  const response = await fetch('/api/banks');
+  const banks = await response.json();
+  
+  const container = document.getElementById('banksList');
+  container.innerHTML = banks.map(b => `
+    <div class="bank-card">
+      <div class="bank-logo">🏦</div>
+      <div class="bank-info">
+        <h3>${b.name}</h3>
+        <a href="${b.website}" target="_blank">${b.website}</a>
+      </div>
+    </div>
+  `).join('');
+  
+  // Update bank filter
+  const filterSelect = document.getElementById('bankFilter');
+  filterSelect.innerHTML = '<option value="">Todos los bancos</option>' + 
+    banks.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+}
+
+// Utility
+function debounce(fn, ms) {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), ms);
+  };
+}
+
+// Initial load
+loadPromotions();
+loadBanks();

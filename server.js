@@ -1,216 +1,379 @@
 const express = require('express');
 const Database = require('better-sqlite3');
 const path = require('path');
-const cron = require('node-cron');
-const { scrapeAll } = require('./scraper/scraper');
+const cheerio = require('cheerio');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 5585;
-
-// Initialize database
 const db = new Database('tarjeta_pro.db');
 
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS promotions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    bank TEXT NOT NULL,
-    card_type TEXT NOT NULL,
-    merchant TEXT NOT NULL,
-    discount_percent REAL,
-    description TEXT NOT NULL,
-    valid_from DATE,
-    valid_to DATE,
-    url TEXT,
-    category TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS user_preferences (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT UNIQUE NOT NULL,
-    categories TEXT,
-    banks TEXT,
-    min_discount REAL DEFAULT 0,
-    notify_email BOOLEAN DEFAULT 0,
-    notify_push BOOLEAN DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_promotions_bank ON promotions(bank);
-  CREATE INDEX IF NOT EXISTS idx_promotions_valid_to ON promotions(valid_to);
-  CREATE INDEX IF NOT EXISTS idx_promotions_category ON promotions(category);
-  CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences(user_id);
-`);
-
-// Middleware
 app.use(express.json());
 app.use(express.static('public'));
 
+// Initialize database
+function initDb() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS banks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      logo_url TEXT,
+      website TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bank_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT CHECK(type IN ('credit', 'debit')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (bank_id) REFERENCES banks(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS promotions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT,
+      discount_percentage REAL,
+      discount_amount REAL,
+      max_discount_amount REAL,
+      valid_from DATE,
+      valid_until DATE,
+      days_of_week TEXT,
+      merchant_name TEXT,
+      merchant_address TEXT,
+      source_url TEXT,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('active', 'expired', 'pending')),
+      scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (card_id) REFERENCES cards(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      preferred_categories TEXT,
+      preferred_zones TEXT,
+      min_discount_percentage REAL,
+      max_discount_amount REAL,
+      notify_new_promotions INTEGER DEFAULT 1,
+      notify_expiring_soon INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS scraper_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bank_name TEXT,
+      status TEXT,
+      promotions_found INTEGER DEFAULT 0,
+      promotions_added INTEGER DEFAULT 0,
+      error_message TEXT,
+      scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    INSERT OR IGNORE INTO banks (name, logo_url, website) VALUES 
+      ('Itau', 'https://www.itau.com.py', 'https://www.itau.com.py'),
+      ('Continental', 'https://www.bancocontinental.com.py', 'https://www.bancocontinental.com.py'),
+      ('Sudameris', 'https://www.sudameris.com.py', 'https://www.sudameris.com.py'),
+      ('Atlas', 'https://www.atlasbank.com.py', 'https://www.atlasbank.com.py'),
+      ('Vision', 'https://www.visionbanco.com', 'https://www.visionbanco.com');
+  `);
+}
+
 // API Routes
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/banks', (req, res) => {
+  const banks = db.prepare('SELECT * FROM banks ORDER BY name').all();
+  res.json(banks);
 });
 
-// Trigger manual scrape
-app.post('/api/scrape', async (req, res) => {
+app.get('/api/cards', (req, res) => {
+  const cards = db.prepare(`
+    SELECT c.*, b.name as bank_name 
+    FROM cards c 
+    JOIN banks b ON c.bank_id = b.id 
+    ORDER BY b.name, c.name
+  `).all();
+  res.json(cards);
+});
+
+app.post('/api/cards', (req, res) => {
+  const { bank_id, name, type } = req.body;
   try {
-    const results = await scrapeAll();
-    res.json({ success: true, results });
+    const result = db.prepare('INSERT INTO cards (bank_id, name, type) VALUES (?, ?, ?)').run(bank_id, name, type);
+    res.json({ id: result.lastInsertRowid });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 
-// Get all promotions
 app.get('/api/promotions', (req, res) => {
-  const stmt = db.prepare('SELECT * FROM promotions ORDER BY valid_to DESC');
-  const promotions = stmt.all();
-  res.json(promotions);
-});
-
-// Get promotions by bank
-app.get('/api/promotions/bank/:bank', (req, res) => {
-  const stmt = db.prepare('SELECT * FROM promotions WHERE bank = ? ORDER BY valid_to DESC');
-  const promotions = stmt.all(req.params.bank);
-  res.json(promotions);
-});
-
-// Get active promotions
-app.get('/api/promotions/active', (req, res) => {
-  const stmt = db.prepare('SELECT * FROM promotions WHERE valid_to >= date("now") OR valid_to IS NULL ORDER BY discount_percent DESC');
-  const promotions = stmt.all();
-  res.json(promotions);
-});
-
-// Get promotions by category
-app.get('/api/promotions/category/:category', (req, res) => {
-  const stmt = db.prepare('SELECT * FROM promotions WHERE category = ? ORDER BY discount_percent DESC');
-  const promotions = stmt.all(req.params.category);
-  res.json(promotions);
-});
-
-// Create promotion
-app.post('/api/promotions', (req, res) => {
-  const { bank, card_type, merchant, discount_percent, description, valid_from, valid_to, url, category } = req.body;
-  const stmt = db.prepare(`
-    INSERT INTO promotions (bank, card_type, merchant, discount_percent, description, valid_from, valid_to, url, category)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  const result = stmt.run(bank, card_type, merchant, discount_percent, description, valid_from, valid_to, url, category);
-  res.json({ id: result.lastInsertRowid });
-});
-
-// Get user preferences
-app.get('/api/preferences/:userId', (req, res) => {
-  const stmt = db.prepare('SELECT * FROM user_preferences WHERE user_id = ?');
-  const prefs = stmt.get(req.params.userId);
-  if (!prefs) {
-    return res.status(404).json({ error: 'User preferences not found' });
-  }
-  res.json({
-    ...prefs,
-    categories: prefs.categories ? JSON.parse(prefs.categories) : [],
-    banks: prefs.banks ? JSON.parse(prefs.banks) : []
-  });
-});
-
-// Create or update user preferences
-app.post('/api/preferences', (req, res) => {
-  const { user_id, categories, banks, min_discount, notify_email, notify_push } = req.body;
-  const categoriesJson = categories ? JSON.stringify(categories) : null;
-  const banksJson = banks ? JSON.stringify(banks) : null;
-  
-  const stmt = db.prepare(`
-    INSERT INTO user_preferences (user_id, categories, banks, min_discount, notify_email, notify_push)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET
-      categories = excluded.categories,
-      banks = excluded.banks,
-      min_discount = excluded.min_discount,
-      notify_email = excluded.notify_email,
-      notify_push = excluded.notify_push,
-      updated_at = CURRENT_TIMESTAMP
-  `);
-  
-  const result = stmt.run(user_id, categoriesJson, banksJson, min_discount, notify_email, notify_push);
-  res.json({ id: result.lastInsertRowid || result.changes });
-});
-
-// Get personalized promotions for user
-app.get('/api/promotions/personalized/:userId', (req, res) => {
-  const prefsStmt = db.prepare('SELECT * FROM user_preferences WHERE user_id = ?');
-  const prefs = prefsStmt.get(req.params.userId);
-  
-  let query = 'SELECT * FROM promotions WHERE (valid_to >= date("now") OR valid_to IS NULL)';
+  const { status, bank_id, category } = req.query;
+  let sql = `
+    SELECT p.*, c.name as card_name, c.type as card_type, b.name as bank_name
+    FROM promotions p
+    JOIN cards c ON p.card_id = c.id
+    JOIN banks b ON c.bank_id = b.id
+    WHERE 1=1
+  `;
   const params = [];
   
-  if (prefs) {
-    const minDiscount = prefs.min_discount || 0;
-    query += ' AND (discount_percent >= ? OR discount_percent IS NULL)';
-    params.push(minDiscount);
-    
-    if (prefs.banks) {
-      const banks = JSON.parse(prefs.banks);
-      if (banks.length > 0) {
-        query += ` AND bank IN (${banks.map(() => '?').join(',')})`;
-        params.push(...banks);
-      }
-    }
+  if (status) {
+    sql += ' AND p.status = ?';
+    params.push(status);
+  }
+  if (bank_id) {
+    sql += ' AND b.id = ?';
+    params.push(bank_id);
+  }
+  if (category) {
+    sql += ' AND p.category LIKE ?';
+    params.push(`%${category}%`);
   }
   
-  query += ' ORDER BY discount_percent DESC';
+  sql += ' ORDER BY p.valid_until DESC, p.discount_percentage DESC';
   
-  const stmt = db.prepare(query);
-  const promotions = stmt.all(...params);
+  const promotions = db.prepare(sql).all(...params);
   res.json(promotions);
 });
 
-// Delete promotion
-app.delete('/api/promotions/:id', (req, res) => {
-  const stmt = db.prepare('DELETE FROM promotions WHERE id = ?');
-  const result = stmt.run(req.params.id);
-  res.json({ deleted: result.changes });
-});
-
-// Get scrape statistics
-app.get('/api/stats', (req, res) => {
-  const totalStmt = db.prepare('SELECT COUNT(*) as count FROM promotions');
-  const byBankStmt = db.prepare('SELECT bank, COUNT(*) as count FROM promotions GROUP BY bank');
-  const byCategoryStmt = db.prepare('SELECT category, COUNT(*) as count FROM promotions GROUP BY category');
-  const recentStmt = db.prepare('SELECT COUNT(*) as count FROM promotions WHERE created_at >= datetime("now", "-7 days")');
+app.post('/api/promotions', (req, res) => {
+  const {
+    card_id, title, description, category,
+    discount_percentage, discount_amount, max_discount_amount,
+    valid_from, valid_until, days_of_week,
+    merchant_name, merchant_address, source_url, status
+  } = req.body;
   
-  res.json({
-    total: totalStmt.get().count,
-    byBank: byBankStmt.all(),
-    byCategory: byCategoryStmt.all(),
-    last7Days: recentStmt.get().count
-  });
+  try {
+    const result = db.prepare(`
+      INSERT INTO promotions (
+        card_id, title, description, category,
+        discount_percentage, discount_amount, max_discount_amount,
+        valid_from, valid_until, days_of_week,
+        merchant_name, merchant_address, source_url, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      card_id, title, description, category,
+      discount_percentage, discount_amount, max_discount_amount,
+      valid_from, valid_until, days_of_week,
+      merchant_name, merchant_address, source_url, status || 'pending'
+    );
+    res.json({ id: result.lastInsertRowid });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
-// Start server
+app.get('/api/promotions/search', (req, res) => {
+  const { q } = req.query;
+  if (!q) {
+    return res.status(400).json({ error: 'Query parameter required' });
+  }
+  
+  const promotions = db.prepare(`
+    SELECT p.*, c.name as card_name, c.type as card_type, b.name as bank_name
+    FROM promotions p
+    JOIN cards c ON p.card_id = c.id
+    JOIN banks b ON c.bank_id = b.id
+    WHERE p.title LIKE ? OR p.description LIKE ? OR p.merchant_name LIKE ? OR p.category LIKE ?
+    ORDER BY p.valid_until DESC
+  `).all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+  
+  res.json(promotions);
+});
+
+// Scraper endpoints
+app.post('/api/scraper/run', async (req, res) => {
+  const { bank } = req.body;
+  const results = [];
+  
+  if (!bank || bank === 'all') {
+    const banks = db.prepare('SELECT name FROM banks').all();
+    for (const b of banks) {
+      results.push(await runScraper(b.name));
+    }
+  } else {
+    results.push(await runScraper(bank));
+  }
+  
+  res.json({ results });
+});
+
+app.get('/api/scraper/logs', (req, res) => {
+  const logs = db.prepare('SELECT * FROM scraper_logs ORDER BY scraped_at DESC LIMIT 50').all();
+  res.json(logs);
+});
+
+// Scraper implementations
+async function runScraper(bankName) {
+  const startTime = Date.now();
+  let promotionsFound = 0;
+  let promotionsAdded = 0;
+  let errorMessage = null;
+  
+  try {
+    const scraper = getScraper(bankName);
+    const promotions = await scraper();
+    promotionsFound = promotions.length;
+    
+    for (const promo of promotions) {
+      const existing = db.prepare('SELECT id FROM promotions WHERE title = ? AND merchant_name = ? AND valid_until = ?').get(
+        promo.title, promo.merchant_name, promo.valid_until
+      );
+      
+      if (!existing) {
+        const cardId = getOrCreateCard(bankName, promo.cardName);
+        db.prepare(`
+          INSERT INTO promotions (
+            card_id, title, description, category,
+            discount_percentage, discount_amount, max_discount_amount,
+            valid_from, valid_until, days_of_week,
+            merchant_name, merchant_address, source_url, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          cardId,
+          promo.title,
+          promo.description,
+          promo.category,
+          promo.discount_percentage,
+          promo.discount_amount,
+          promo.max_discount_amount,
+          promo.valid_from,
+          promo.valid_until,
+          promo.days_of_week,
+          promo.merchant_name,
+          promo.merchant_address,
+          promo.source_url,
+          'active'
+        );
+        promotionsAdded++;
+      }
+    }
+    
+    db.prepare('INSERT INTO scraper_logs (bank_name, status, promotions_found, promotions_added) VALUES (?, ?, ?, ?)')
+      .run(bankName, 'success', promotionsFound, promotionsAdded);
+    
+    return {
+      bank: bankName,
+      status: 'success',
+      promotionsFound,
+      promotionsAdded,
+      duration: Date.now() - startTime
+    };
+  } catch (err) {
+    errorMessage = err.message;
+    db.prepare('INSERT INTO scraper_logs (bank_name, status, promotions_found, error_message) VALUES (?, ?, ?, ?)')
+      .run(bankName, 'error', promotionsFound, errorMessage);
+    
+    return {
+      bank: bankName,
+      status: 'error',
+      promotionsFound,
+      error: errorMessage,
+      duration: Date.now() - startTime
+    };
+  }
+}
+
+function getOrCreateCard(bankName, cardName) {
+  const bank = db.prepare('SELECT id FROM banks WHERE name = ?').get(bankName);
+  if (!bank) throw new Error(`Bank not found: ${bankName}`);
+  
+  let card = db.prepare('SELECT id FROM cards WHERE bank_id = ? AND name = ?').get(bank.id, cardName);
+  if (!card) {
+    const result = db.prepare('INSERT INTO cards (bank_id, name, type) VALUES (?, ?, ?)').run(bank.id, cardName, 'credit');
+    card = { id: result.lastInsertRowid };
+  }
+  
+  return card.id;
+}
+
+function getScraper(bankName) {
+  const scrapers = {
+    'Itau': scrapeItau,
+    'Continental': scrapeContinental,
+    'Sudameris': scrapeSudameris,
+    'Atlas': scrapeAtlas,
+    'Vision': scrapeVision
+  };
+  
+  const scraper = scrapers[bankName];
+  if (!scraper) throw new Error(`No scraper found for ${bankName}`);
+  return scraper;
+}
+
+// Mock scrapers (replace with actual implementations)
+async function scrapeItau() {
+  // Simulated scraping - replace with actual Cheerio implementation
+  return [
+    {
+      cardName: 'Itau Visa',
+      title: '20% de descuento en restaurantes',
+      description: 'Todos los jueves en restaurantes seleccionados',
+      category: 'Gastronomia',
+      discount_percentage: 20,
+      valid_from: new Date().toISOString().split('T')[0],
+      valid_until: '2024-12-31',
+      days_of_week: 'jueves',
+      merchant_name: 'Restaurantes participantes',
+      merchant_address: 'Asuncion y Gran Asuncion',
+      source_url: 'https://www.itau.com.py/promociones'
+    }
+  ];
+}
+
+async function scrapeContinental() {
+  return [
+    {
+      cardName: 'Continental Mastercard',
+      title: '15% off en supermercados',
+      description: 'Viernes de descuento en supermercados',
+      category: 'Supermercados',
+      discount_percentage: 15,
+      valid_from: new Date().toISOString().split('T')[0],
+      valid_until: '2024-12-31',
+      days_of_week: 'viernes',
+      merchant_name: 'Supermercados participantes',
+      merchant_address: 'Todo el pais',
+      source_url: 'https://www.bancocontinental.com.py/promociones'
+    }
+  ];
+}
+
+async function scrapeSudameris() {
+  return [];
+}
+
+async function scrapeAtlas() {
+  return [];
+}
+
+async function scrapeVision() {
+  return [];
+}
+
+// Actual Cheerio-based scraper example (template for real implementation)
+async function scrapeWithCheerio(url, selector, parseFn) {
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.0'
+      },
+      timeout: 30000
+    });
+    
+    const $ = cheerio.load(response.data);
+    return parseFn($);
+  } catch (err) {
+    throw new Error(`Scraping failed: ${err.message}`);
+  }
+}
+
+initDb();
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Tarjeta Pro server running on port ${PORT}`);
-  
-  // Start cron job for scraping every 6 hours
-  const scrapeSchedule = process.env.SCRAPE_SCHEDULE || '0 */6 * * *';
-  console.log('Scheduling scraper with cron:', scrapeSchedule);
-  
-  cron.schedule(scrapeSchedule, async () => {
-    console.log('Running scheduled scrape at', new Date().toISOString());
-    try {
-      const results = await scrapeAll();
-      console.log('Scheduled scrape completed:', results);
-    } catch (err) {
-      console.error('Scheduled scrape failed:', err);
-    }
-  });
-  
-  // Run initial scrape after 10 seconds to let server start
-  setTimeout(() => {
-    console.log('Running initial scrape...');
-    scrapeAll().catch(err => console.error('Initial scrape failed:', err));
-  }, 10000);
 });

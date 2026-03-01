@@ -1,7 +1,7 @@
 import { getDatabase } from '../db/database';
 import { BaseScraper, ScraperResult, ScrapedPromotion } from './BaseScraper';
 import { PromotionModel } from '../models/Promotion';
-import { CardModel } from '../models/Card';
+import { CardModel } from '../models/index';
 
 export interface ScraperRunResult {
   runId: number;

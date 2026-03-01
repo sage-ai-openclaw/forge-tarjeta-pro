@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { PromotionModel } from '../models/Promotion';
 import { BankModel, CardModel } from '../models';
+import scraperRoutes from './scraper';
 
 const router = Router();
+
+// Mount scraper routes
+router.use(scraperRoutes);
 
 // GET /api/banks - List all banks
 router.get('/banks', async (_req, res) => {

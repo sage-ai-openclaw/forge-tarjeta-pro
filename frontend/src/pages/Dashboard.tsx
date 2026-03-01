@@ -3,15 +3,17 @@ import { usePromotionStore } from '../stores/promotionStore';
 import { PromotionCard } from '../components/PromotionCard';
 import { FilterSidebar } from '../components/FilterSidebar';
 import { SearchBar } from '../components/SearchBar';
+import { NotificationBell } from '../components/NotificationBell';
 import { CreditCard, Building2, Tag, Sparkles } from 'lucide-react';
-import { clsx } from 'clsx';
 
 interface DashboardProps {
+  userId: number;
   onNavigateToMyPromotions?: () => void;
   onNavigateToPreferences?: () => void;
+  onNavigateToNotifications?: () => void;
 }
 
-export function Dashboard({ onNavigateToMyPromotions, onNavigateToPreferences }: DashboardProps) {
+export function Dashboard({ userId, onNavigateToMyPromotions, onNavigateToPreferences, onNavigateToNotifications }: DashboardProps) {
   const { 
     promotions, 
     isLoading, 
@@ -67,6 +69,10 @@ export function Dashboard({ onNavigateToMyPromotions, onNavigateToPreferences }:
               >
                 Preferencias
               </button>
+              <NotificationBell 
+                userId={userId} 
+                onNavigateToNotifications={onNavigateToNotifications}
+              />
             </nav>
           </div>
         </div>

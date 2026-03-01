@@ -253,3 +253,6 @@ export class UserPreferencesModel {
     };
   }
 }
+
+// Re-export other models
+export { NotificationModel } from './Notification';

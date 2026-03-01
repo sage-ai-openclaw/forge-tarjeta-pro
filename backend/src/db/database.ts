@@ -134,6 +134,31 @@ async function createTables(): Promise<void> {
     )
   `);
 
+  // Notifications table
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      promotion_id INTEGER,
+      type TEXT CHECK(type IN ('new_promotion', 'expiring_soon', 'system')) DEFAULT 'new_promotion',
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT CHECK(status IN ('read', 'unread')) DEFAULT 'unread',
+      channel TEXT CHECK(channel IN ('in-app', 'email', 'push')) DEFAULT 'in-app',
+      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      read_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Notification indexes
+  await database.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`);
+  await database.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status)`);
+  await database.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_promotion ON notifications(promotion_id)`);
+  await database.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)`);
+
   // Indexes
   await database.exec(`CREATE INDEX IF NOT EXISTS idx_promotions_card ON promotions(card_id)`);
   await database.exec(`CREATE INDEX IF NOT EXISTS idx_promotions_category ON promotions(category)`);

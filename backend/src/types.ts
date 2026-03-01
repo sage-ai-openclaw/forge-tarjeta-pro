@@ -90,3 +90,30 @@ export interface CreateUserPreferencesInput {
   notifyNewPromotions?: boolean;
   notifyExpiringSoon?: boolean;
 }
+
+export interface Notification {
+  id: number;
+  userId: number;
+  promotionId?: number;
+  type: 'new_promotion' | 'expiring_soon' | 'system';
+  title: string;
+  message: string;
+  status: 'read' | 'unread';
+  channel: 'in-app' | 'email' | 'push';
+  sentAt: string;
+  readAt?: string;
+  createdAt: string;
+  promotionTitle?: string;
+  promotionDiscount?: number;
+}
+
+export interface CreateNotificationInput {
+  userId: number;
+  promotionId?: number;
+  type: 'new_promotion' | 'expiring_soon' | 'system';
+  title: string;
+  message: string;
+  status?: 'read' | 'unread';
+  channel?: 'in-app' | 'email' | 'push';
+  sentAt?: string;
+}

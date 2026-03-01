@@ -83,3 +83,25 @@ export interface DashboardStats {
   byBank: { bank: string; count: number }[];
   byCategory: { category: string; count: number }[];
 }
+
+export interface Notification {
+  id: number;
+  userId: number;
+  promotionId?: number;
+  type: 'new_promotion' | 'expiring_soon' | 'system';
+  title: string;
+  message: string;
+  status: 'read' | 'unread';
+  channel: 'in-app' | 'email' | 'push';
+  sentAt: string;
+  readAt?: string;
+  createdAt: string;
+  promotionTitle?: string;
+  promotionDiscount?: number;
+}
+
+export interface NotificationStats {
+  total: number;
+  unread: number;
+  read: number;
+}

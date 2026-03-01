@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Dashboard } from './pages/Dashboard';
 import { PreferencesPage } from './pages/PreferencesPage';
 import { MyPromotionsPage } from './pages/MyPromotionsPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 
-type Page = 'dashboard' | 'my-promotions' | 'preferences';
+type Page = 'dashboard' | 'my-promotions' | 'preferences' | 'notifications';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
@@ -18,8 +19,10 @@ function App() {
   if (currentPage === 'dashboard') {
     return (
       <Dashboard 
+        userId={userId}
         onNavigateToMyPromotions={() => navigateTo('my-promotions')}
         onNavigateToPreferences={() => navigateTo('preferences')}
+        onNavigateToNotifications={() => navigateTo('notifications')}
       />
     );
   }
@@ -38,6 +41,16 @@ function App() {
     return (
       <PreferencesPage 
         userId={userId}
+        onNavigateToDashboard={() => navigateTo('dashboard')}
+      />
+    );
+  }
+
+  if (currentPage === 'notifications') {
+    return (
+      <NotificationsPage
+        userId={userId}
+        onNavigateToDashboard={() => navigateTo('dashboard')}
       />
     );
   }

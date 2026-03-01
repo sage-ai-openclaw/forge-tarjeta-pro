@@ -1,4 +1,4 @@
-import type { Bank, Card, Promotion, PromotionFilters, UserPreferences, UserCard, User } from '../types';
+import type { Bank, Card, Promotion, PromotionFilters, UserPreferences, UserCard, User, Notification, NotificationStats } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -100,4 +100,29 @@ export const api = {
 
   // Stats
   getStats: () => fetchApi('/api/stats'),
+
+  // Notifications
+  getNotifications: (userId: number, options?: { status?: 'read' | 'unread' | 'all'; limit?: number; offset?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.status) params.append('status', options.status);
+    if (options?.limit) params.append('limit', String(options.limit));
+    if (options?.offset) params.append('offset', String(options.offset));
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return fetchApi<Notification[]>(`/api/notifications/${userId}${query}`);
+  },
+
+  getUnreadNotificationCount: (userId: number) =>
+    fetchApi<{ count: number }>(`/api/notifications/${userId}/unread-count`),
+
+  markNotificationAsRead: (notificationId: number) =>
+    fetchApi<void>(`/api/notifications/${notificationId}/read`, { method: 'POST' }),
+
+  markAllNotificationsAsRead: (userId: number) =>
+    fetchApi<void>(`/api/notifications/${userId}/read-all`, { method: 'POST' }),
+
+  getNotificationStats: (userId: number) =>
+    fetchApi<NotificationStats>(`/api/notifications/${userId}/stats`),
+
+  deleteNotification: (notificationId: number) =>
+    fetchApi<void>(`/api/notifications/${notificationId}`, { method: 'DELETE' }),
 };

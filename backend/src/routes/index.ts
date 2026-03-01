@@ -5,6 +5,7 @@ import { BankModel, CardModel } from '../models';
 import { getDatabase } from '../db/database';
 import scraperRoutes from './scraper';
 import preferencesRoutes from './preferences';
+import notificationRoutes from './notifications';
 
 const router = Router();
 
@@ -13,6 +14,9 @@ router.use(scraperRoutes);
 
 // Mount preferences routes
 router.use(preferencesRoutes);
+
+// Mount notification routes
+router.use(notificationRoutes);
 
 // GET /api/banks - List all banks
 router.get('/banks', async (_req, res) => {

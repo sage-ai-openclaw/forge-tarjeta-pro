@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tarjeta Pro - Promociones Bancarias Paraguay</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>💳 Tarjeta Pro</h1>
+    <p>Monitor inteligente de promociones bancarias en Paraguay</p>
+  </header>
+  
+  <main>
+    <section id="banks">
+      <h2>Bancos Monitoreados</h2>
+      <div class="bank-list">
+        <span class="bank-tag">Itaú</span>
+        <span class="bank-tag">Continental</span>
+        <span class="bank-tag">Sudameris</span>
+        <span class="bank-tag">Atlas</span>
+        <span class="bank-tag">Visión</span>
+      </div>
+    </section>
+    
+    <section id="promotions">
+      <h2>Promociones Activas</h2>
+      <div id="promotions-list">Cargando...</div>
+    </section>
+    
+    <section id="preferences">
+      <h2>Mis Preferencias</h2>
+      <form id="prefs-form">
+        <label>
+          Categorías (separadas por coma):
+          <input type="text" id="categories" placeholder="restaurantes, combustible, supermercados">
+        </label>
+        <label>
+          Bancos preferidos (separados por coma):
+          <input type="text" id="banks" placeholder="Itaú, Continental">
+        </label>
+        <label>
+          Descuento mínimo (%):
+          <input type="number" id="min-discount" min="0" max="100" value="0">
+        </label>
+        <button type="submit">Guardar Preferencias</button>
+      </form>
+    </section>
+  </main>
+  
+  <footer>
+    <p>Tarjeta Pro &copy; 2024</p>
+  </footer>
+  
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 const express = require('express');
 const Database = require('better-sqlite3');
 const path = require('path');
+const cron = require('node-cron');
+const { scrapeAll } = require('./scraper/scraper');
 
 const app = express();
 const PORT = process.env.PORT || 5585;
@@ -49,7 +51,17 @@ app.use(express.static('public'));
 
 // API Routes
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Trigger manual scrape
+app.post('/api/scrape', async (req, res) => {
+  try {
+    const results = await scrapeAll();
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Get all promotions
@@ -68,8 +80,15 @@ app.get('/api/promotions/bank/:bank', (req, res) => {
 
 // Get active promotions
 app.get('/api/promotions/active', (req, res) => {
-  const stmt = db.prepare('SELECT * FROM promotions WHERE valid_to >= date("now") ORDER BY discount_percent DESC');
+  const stmt = db.prepare('SELECT * FROM promotions WHERE valid_to >= date("now") OR valid_to IS NULL ORDER BY discount_percent DESC');
   const promotions = stmt.all();
+  res.json(promotions);
+});
+
+// Get promotions by category
+app.get('/api/promotions/category/:category', (req, res) => {
+  const stmt = db.prepare('SELECT * FROM promotions WHERE category = ? ORDER BY discount_percent DESC');
+  const promotions = stmt.all(req.params.category);
   res.json(promotions);
 });
 
@@ -120,6 +139,35 @@ app.post('/api/preferences', (req, res) => {
   res.json({ id: result.lastInsertRowid || result.changes });
 });
 
+// Get personalized promotions for user
+app.get('/api/promotions/personalized/:userId', (req, res) => {
+  const prefsStmt = db.prepare('SELECT * FROM user_preferences WHERE user_id = ?');
+  const prefs = prefsStmt.get(req.params.userId);
+  
+  let query = 'SELECT * FROM promotions WHERE (valid_to >= date("now") OR valid_to IS NULL)';
+  const params = [];
+  
+  if (prefs) {
+    const minDiscount = prefs.min_discount || 0;
+    query += ' AND (discount_percent >= ? OR discount_percent IS NULL)';
+    params.push(minDiscount);
+    
+    if (prefs.banks) {
+      const banks = JSON.parse(prefs.banks);
+      if (banks.length > 0) {
+        query += ` AND bank IN (${banks.map(() => '?').join(',')})`;
+        params.push(...banks);
+      }
+    }
+  }
+  
+  query += ' ORDER BY discount_percent DESC';
+  
+  const stmt = db.prepare(query);
+  const promotions = stmt.all(...params);
+  res.json(promotions);
+});
+
 // Delete promotion
 app.delete('/api/promotions/:id', (req, res) => {
   const stmt = db.prepare('DELETE FROM promotions WHERE id = ?');
@@ -127,7 +175,42 @@ app.delete('/api/promotions/:id', (req, res) => {
   res.json({ deleted: result.changes });
 });
 
+// Get scrape statistics
+app.get('/api/stats', (req, res) => {
+  const totalStmt = db.prepare('SELECT COUNT(*) as count FROM promotions');
+  const byBankStmt = db.prepare('SELECT bank, COUNT(*) as count FROM promotions GROUP BY bank');
+  const byCategoryStmt = db.prepare('SELECT category, COUNT(*) as count FROM promotions GROUP BY category');
+  const recentStmt = db.prepare('SELECT COUNT(*) as count FROM promotions WHERE created_at >= datetime("now", "-7 days")');
+  
+  res.json({
+    total: totalStmt.get().count,
+    byBank: byBankStmt.all(),
+    byCategory: byCategoryStmt.all(),
+    last7Days: recentStmt.get().count
+  });
+});
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Tarjeta Pro server running on port ${PORT}`);
+  
+  // Start cron job for scraping every 6 hours
+  const scrapeSchedule = process.env.SCRAPE_SCHEDULE || '0 */6 * * *';
+  console.log('Scheduling scraper with cron:', scrapeSchedule);
+  
+  cron.schedule(scrapeSchedule, async () => {
+    console.log('Running scheduled scrape at', new Date().toISOString());
+    try {
+      const results = await scrapeAll();
+      console.log('Scheduled scrape completed:', results);
+    } catch (err) {
+      console.error('Scheduled scrape failed:', err);
+    }
+  });
+  
+  // Run initial scrape after 10 seconds to let server start
+  setTimeout(() => {
+    console.log('Running initial scrape...');
+    scrapeAll().catch(err => console.error('Initial scrape failed:', err));
+  }, 10000);
 });
